@@ -1,0 +1,6 @@
+foreach(name base64 device_key http fleet)
+  string(REPLACE "_" "-" exe "${name}")
+  add_executable(${exe}-unittest test_${name}.cpp)
+  target_link_libraries(${exe}-unittest PRIVATE aember-auth-lib)
+  add_test(NAME ${name} COMMAND ${exe}-unittest)
+endforeach()

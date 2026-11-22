@@ -1,0 +1,20 @@
+{
+  "name": "aember-auth",
+  "command": ["/usr/bin/aember-auth"],
+  "network": "host",
+  "restart_policy": "always",
+  "max_restart_attempts": 0,
+  "restart_delay": 5,
+  "stop_timeout": 5,
+  "console_log": true,
+  "compression": "xz",
+  "lxc": [
+    "# The device key and enrollment: /var/lib/aember-auth on the device (kept across updates of this container), only here",
+    "lxc.hook.pre-start = /bin/sh -c \"mkdir -p /var/lib/aember-auth /run/aember-auth && chmod 700 /var/lib/aember-auth\"",
+    "lxc.mount.entry = /var/lib/aember-auth var/lib/aember-auth none bind,create=dir 0 0",
+    "# auth.json and the fleet's CA certificate: /etc/aember/auth on the device (the board's overlay), read-only",
+    "lxc.mount.entry = /etc/aember/auth etc/aember-auth none bind,ro,create=dir 0 0",
+    "# The socket local services (aember-fleet's agent) reach the fleet through",
+    "lxc.mount.entry = /run/aember-auth run/aember-auth none bind,create=dir 0 0"
+  ]
+}
