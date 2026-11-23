@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <optional>
 
 #include <unistd.h>
 
@@ -18,6 +19,14 @@ std::string DeviceFile(const AuthConfig& c) {
 std::string Hostname() {
   char buf[256] = {};
   return ::gethostname(buf, sizeof(buf) - 1) == 0 ? std::string{buf} : "aember";
+}
+
+/// @p j[@p key] if it is a string.
+std::optional<std::string> StringField(const nlohmann::json& j,
+                                       const char* key) {
+  if (!j.is_object() || !j.contains(key) || !j[key].is_string())
+    return std::nullopt;
+  return j[key].get<std::string>();
 }
 
 std::string Arch() {
@@ -75,9 +84,7 @@ FleetClient::FleetClient(AuthConfig config, DeviceKey key, HttpClient http)
     : config_(std::move(config)), key_(std::move(key)), http_(std::move(http)) {
   std::ifstream in{DeviceFile(config_)};
   const auto j = nlohmann::json::parse(in, nullptr, false);
-  if (j.is_object() && j.contains("device_id") && j["device_id"].is_string()) {
-    device_id_ = j["device_id"].get<std::string>();
-  }
+  device_id_ = StringField(j, "device_id").value_or("");
 }
 
 bool FleetClient::Enrolled() const {
@@ -119,23 +126,22 @@ std::expected<void, std::string> FleetClient::Enroll() {
                      {"name", config_.name},
                      {"info", {{"arch", Arch()}, {"hostname", Hostname()}}}});
   if (!j) return std::unexpected(j.error());
-  if (!j->contains("device_id") || !(*j)["device_id"].is_string()) {
-    return std::unexpected("enroll: no device_id in the answer");
-  }
-  const auto id = (*j)["device_id"].get<std::string>();
+  const auto id = StringField(*j, "device_id");
+  if (!id) return std::unexpected("enroll: no device_id in the answer");
   std::error_code ec;
   std::filesystem::create_directories(config_.state_dir, ec);
   const std::string tmp = DeviceFile(config_) + ".tmp";
   {
     std::ofstream out{tmp};
-    out << nlohmann::json{{"device_id", id}, {"server", config_.server}}.dump(2)
+    out << nlohmann::json{{"device_id", *id}, {"server", config_.server}}.dump(
+               2)
         << '\n';
     if (!out) return std::unexpected("cannot write " + tmp);
   }
   std::filesystem::rename(tmp, DeviceFile(config_), ec);
   if (ec) return std::unexpected("cannot write " + DeviceFile(config_));
   std::lock_guard lock{mutex_};
-  device_id_ = id;
+  device_id_ = *id;
   return {};
 }
 
@@ -152,23 +158,20 @@ std::expected<std::string, std::string> FleetClient::Token() {
   const auto id = DeviceId();
   auto challenge = PostJson("/api/v1/auth/challenge", {{"device_id", id}});
   if (!challenge) return std::unexpected(challenge.error());
-  if (!challenge->contains("nonce") || !(*challenge)["nonce"].is_string()) {
-    return std::unexpected("challenge: no nonce");
-  }
-  const auto nonce = (*challenge)["nonce"].get<std::string>();
-  const auto message = ChallengeMessage(id, nonce);
+  const auto nonce = StringField(*challenge, "nonce");
+  if (!nonce) return std::unexpected("challenge: no nonce");
+  const auto message = ChallengeMessage(id, *nonce);
   const auto sig = key_.Sign(
       {reinterpret_cast<const std::uint8_t*>(message.data()), message.size()});
   auto token = PostJson(
       "/api/v1/auth/token",
-      {{"device_id", id}, {"nonce", nonce}, {"signature", Base64Encode(sig)}});
+      {{"device_id", id}, {"nonce", *nonce}, {"signature", Base64Encode(sig)}});
   if (!token) return std::unexpected(token.error());
-  if (!token->contains("token") || !(*token)["token"].is_string()) {
-    return std::unexpected("token: no token in the answer");
-  }
+  auto value = StringField(*token, "token");
+  if (!value) return std::unexpected("token: no token in the answer");
   const int seconds = token->value("expires_in", 300);
   std::lock_guard lock{mutex_};
-  token_ = (*token)["token"].get<std::string>();
+  token_ = std::move(*value);
   token_expiry_ =
       std::chrono::steady_clock::now() + std::chrono::seconds{seconds};
   return token_;
