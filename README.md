@@ -65,7 +65,7 @@ aember-cli/run.py sdk   -a x64-poky-linux    # aember-resources SDK v0.1.15+ (wo
 aember-cli/run.py build -a x64-poky-linux
 aember-cli/run.py pack  -a x64-poky-linux
 aember-cli/run.py install -a x64-poky-linux ../aember
-aember-cli/run.py test                       # unit tests (x64 SDK) + CLI tests
+aember-cli/run.py test                       # unit tests (x64 SDK)
 ```
 
 Every aember target works (`-a aarch64-poky-linux`, `-musl` variants, ...).

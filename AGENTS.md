@@ -6,7 +6,8 @@ Guidance for AI coding agents working in **aember-auth**.
 
 A C++23 service in an aember LXC container: the device's identity towards
 aember-fleet (see README.md). Same layout and CLI as aember-stats and
-aember-monitor (`aember-cli/`, shared; only `project.py` differs:
+aember-monitor: `aember-cli/run.py` runs aember-build-helper's shared
+`project-cli/` and only sets what differs (
 `TESTS = "sdk"`, `RESOURCES_VERSION = "0.1.15"`, the first release whose
 SDKs have wolfSSL and nlohmann/json).
 
