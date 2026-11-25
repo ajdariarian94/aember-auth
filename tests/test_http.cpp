@@ -72,6 +72,7 @@ int main() {
   for (const auto* bad :
        {"",
         "SSH-2.0-dropbear\r\n",
+        "FTP/1.0 200 OK\r\n\r\n",  // a status line, but not HTTP
         "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nshort",
         "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n"}) {
     CHECK(!ReadHttpResponse(Source(bad)).has_value());
