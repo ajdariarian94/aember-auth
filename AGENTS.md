@@ -37,4 +37,7 @@ tools/aember-build-helper  submodule: packs the container
 - Tests build with the x64 SDK and run through its loader
   (`aember-cli/run.py test`). Locally, against an unreleased SDK:
   `AEMBER_RESOURCES_DIR=/aember_ws/aember-resources/yocto/build`.
+- A test that pins down a fixed bug starts with a comment
+  `Regression: <the bug>` (`grep -rn "Regression:"` lists them). Every bug
+  fix gets one.
 - Commit as Arian Ajdari; branches + PRs; merge when tests pass.
