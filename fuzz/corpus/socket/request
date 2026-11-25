@@ -1,0 +1,1 @@
+{"op":"request","method":"POST","path":"/api/v1/device/status","body":{"a":1}}
