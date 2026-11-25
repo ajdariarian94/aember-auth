@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -169,7 +171,14 @@ std::expected<std::string, std::string> FleetClient::Token() {
   if (!token) return std::unexpected(token.error());
   auto value = StringField(*token, "token");
   if (!value) return std::unexpected("token: no token in the answer");
-  const int seconds = token->value("expires_in", 300);
+  // Any lifetime the server gives, within a day; 300 s if it gives none.
+  std::int64_t seconds = 300;
+  if (token->contains("expires_in") &&
+      (*token)["expires_in"].is_number_integer()) {
+    seconds = std::clamp((*token)["expires_in"].get<std::int64_t>(),
+                         std::int64_t{0},
+                         std::int64_t{86400});
+  }
   std::lock_guard lock{mutex_};
   token_ = std::move(*value);
   token_expiry_ =

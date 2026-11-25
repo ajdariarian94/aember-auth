@@ -49,6 +49,8 @@ class FakeFleet {
   std::string public_key;  // from the enroll request
   std::string last_auth;   // Authorization of the last device call
   std::atomic<bool> reject_tokens{false};
+  std::atomic<bool> text_expiry{false};       // "expires_in" as a string
+  std::atomic<bool> broken_challenge{false};  // 500, not UTF-8
 
  private:
   void Loop(const std::stop_token& st) {
@@ -101,7 +103,12 @@ class FakeFleet {
         out = R"({"device_id":"dev-1"})";
       }
     } else if (path == "/api/v1/auth/challenge") {
-      out = R"({"nonce":"n0nce"})";
+      if (broken_challenge) {
+        status = 500;
+        out = "\xff\xfe oops";
+      } else {
+        out = R"({"nonce":"n0nce"})";
+      }
     } else if (path == "/api/v1/auth/token") {
       const auto pub = Base64Decode(public_key);
       const auto sig = Base64Decode(j.value("signature", ""));
@@ -124,7 +131,8 @@ class FakeFleet {
       } else {
         ++logins;
         out = R"({"token":"tok-)" + std::to_string(logins.load()) +
-              R"(","expires_in":600})";
+              (text_expiry ? R"(","expires_in":"600"})"
+                           : R"(","expires_in":600})");
       }
     } else if (path.starts_with("/api/v1/device/")) {
       ++device_calls;
@@ -227,6 +235,14 @@ int main() {
   CHECK(r.has_value() && r->status == 200);
   CHECK_EQ(fleet.logins.load(), 2);
 
+  // Regression: an "expires_in" that wasn't a number threw out of Token()
+  // and ended aember-auth (found by fuzz_fleet_responses).
+  fleet.text_expiry = true;
+  client.ForgetToken();
+  token = client.Token();
+  CHECK(token.has_value() && *token == "tok-3");
+  fleet.text_expiry = false;
+
   // A restart keeps the enrollment (device.json).
   FleetClient restarted{
       *config, *key, HttpClient{*ParseUrl(config->server), ""}};
@@ -274,11 +290,29 @@ int main() {
              {"method", "DELETE"},
              {"path", "/api/v1/device/x"}},
         json{{"op", "nope"}},
-        json{{"no", "op"}}}) {
+        json{{"no", "op"}},
+        // Regression: a method or path that wasn't a string threw out of
+        // the connection's thread and ended aember-auth (found by
+        // fuzz_socket).
+        json{{"op", "request"}, {"method", 1}, {"path", "/api/v1/device/x"}},
+        json{{"op", "request"}, {"path", json::array()}}}) {
     auto [h, b] = Ask(sock, bad);
     CHECK(h["ok"] == false);
     CHECK(h.contains("error"));
   }
+
+  // Regression: an error text with the fleet server's raw bytes (not
+  // UTF-8) threw in json::dump() and ended aember-auth (found by
+  // fuzz_fleet_responses). Now the client gets the error, U+FFFD inside.
+  client.ForgetToken();
+  fleet.broken_challenge = true;
+  {
+    auto [h, b] = Ask(sock, {{"op", "request"}, {"path", "/api/v1/device/x"}});
+    CHECK(h["ok"] == false);
+    CHECK(h.value("error", "").find("500") != std::string::npos);
+    CHECK(h.value("error", "").find("\xef\xbf\xbd") != std::string::npos);
+  }
+  fleet.broken_challenge = false;
   serving.request_stop();
   serving.join();
   std::filesystem::remove_all(dir);

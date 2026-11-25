@@ -69,3 +69,19 @@ aember-cli/run.py test                       # unit tests (x64 SDK)
 ```
 
 Every aember target works (`-a aarch64-poky-linux`, `-musl` variants, ...).
+
+## Fuzzing
+
+Every input from outside the process (the local socket, the fleet server's
+answers, auth.json and the state files) has a libFuzzer target in `fuzz/`.
+On Ubuntu 24.04:
+
+```bash
+sudo apt-get install clang-18 llvm-18 libclang-rt-18-dev cmake ninja-build \
+    pkg-config libwolfssl-dev nlohmann-json3-dev
+fuzz/run.sh            # every target for 60 s (CI does the same)
+fuzz/run.sh 600 fuzz_socket
+```
+
+Crashing inputs land in `build/fuzz/crashes/<target>/`; replay one with
+`build/fuzz/fuzz_<target> <file>`.

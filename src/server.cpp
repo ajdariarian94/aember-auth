@@ -26,7 +26,20 @@ bool SendAll(int fd, std::string_view data) {
 }
 
 void SendLine(int fd, const nlohmann::json& j) {
-  SendAll(fd, j.dump() + "\n");
+  // Error texts can carry the fleet server's raw bytes: invalid UTF-8
+  // becomes U+FFFD instead of an exception.
+  SendAll(
+      fd,
+      j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n");
+}
+
+/// @p req[@p key] as a string, @p fallback when it isn't there, nullopt
+/// when it is something else.
+std::optional<std::string> StringOr(const nlohmann::json& req, const char* key,
+                                    std::string fallback) {
+  if (!req.contains(key)) return fallback;
+  if (!req[key].is_string()) return std::nullopt;
+  return req[key].get<std::string>();
 }
 
 void SendError(int fd, std::string message) {
@@ -70,8 +83,15 @@ void HandleConnection(int fd, FleetClient& fleet) {
               {"device_id", fleet.DeviceId()},
               {"server", fleet.config().server}});
   } else if (op == "request") {
-    const auto method = req.value("method", std::string{"GET"});
-    const auto path = req.value("path", std::string{});
+    const auto method_field = StringOr(req, "method", "GET");
+    const auto path_field = StringOr(req, "path", "");
+    if (!method_field || !path_field) {
+      SendError(fd, "method and path must be strings");
+      ::close(fd);
+      return;
+    }
+    const auto& method = *method_field;
+    const auto& path = *path_field;
     std::string body;
     if (req.contains("body")) {
       body = req["body"].is_string() ? req["body"].get<std::string>()
@@ -151,7 +171,12 @@ void AuthServer::Serve(const std::stop_token& stop) {
     }
     ++active_;
     std::thread{[this, client] {
-      HandleConnection(client, fleet_);
+      try {
+        HandleConnection(client, fleet_);
+      } catch (const std::exception& e) {  // never take the server down
+        std::cerr << "aember-auth: connection: " << e.what() << '\n';
+        ::close(client);  // HandleConnection closes it only at its end
+      }
       --active_;
     }}.detach();
   }
