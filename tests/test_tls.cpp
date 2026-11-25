@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/socket.h>
@@ -97,8 +98,9 @@ int main() {
     const std::string accept = std::format("127.0.0.1:{}", port);
     const std::string cert = d + "/srv.pem";
     const std::string key = d + "/srv.key";
-    ::freopen("/dev/null", "w", stdout);
-    ::freopen("/dev/null", "w", stderr);
+    const int null = ::open("/dev/null", O_WRONLY);
+    ::dup2(null, STDOUT_FILENO);
+    ::dup2(null, STDERR_FILENO);
     ::execlp("openssl", "openssl", "s_server", "-quiet", "-www", "-accept",
              accept.c_str(), "-cert", cert.c_str(), "-key", key.c_str(),
              static_cast<char*>(nullptr));
