@@ -18,6 +18,8 @@ include/aember-auth/   base64.h, device-key.h (Ed25519, wolfCrypt), http.h
 src/                   the same + main.cpp
 tests/                 *-unittest via CTest; check.h (the SDK has no test
                        framework); test_fleet.cpp runs a fake fleet server
+fuzz/                  libFuzzer targets (host clang build, ASan + UBSan),
+                       seed corpus + dictionaries in fuzz/corpus/, run.sh
 aember-container.json  the container (binds, restart policy)
 tools/aember-build-helper  submodule: packs the container
 ```
@@ -40,4 +42,15 @@ tools/aember-build-helper  submodule: packs the container
 - A test that pins down a fixed bug starts with a comment
   `Regression: <the bug>` (`grep -rn "Regression:"` lists them). Every bug
   fix gets one.
+- Fuzzing: `fuzz/run.sh [SECONDS] [TARGET...]` (CI: 60 s per target, the
+  `fuzz` job). It is a host build with clang 18 and Ubuntu's wolfSSL and
+  nlohmann-json, not the SDK (it has no clang/libFuzzer). Targets cover
+  every input from outside the process: the socket (`fuzz_socket`), the
+  fleet server's answers through a fake server (`fuzz_fleet_responses`),
+  HTTP parsing, URLs, base64, auth.json, device.key/device.json. A new
+  parser gets a target; a crash gets a fix, a `Regression:` unit test, and
+  its input in `fuzz/corpus/<target>/`. nlohmann/json: `value()` and
+  `get<T>()` throw on another type, and `dump()` throws on invalid UTF-8;
+  check types (`is_string()` ...) and dump text from outside with
+  `error_handler_t::replace`.
 - Commit as Arian Ajdari; branches + PRs; merge when tests pass.
