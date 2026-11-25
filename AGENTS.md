@@ -42,6 +42,13 @@ tools/aember-build-helper  submodule: packs the container
 - A test that pins down a fixed bug starts with a comment
   `Regression: <the bug>` (`grep -rn "Regression:"` lists them). Every bug
   fix gets one.
+- Mutation testing: `aember-cli/run.py mutate [-n N] [-f FILE]` (the shared
+  mutator from aember-build-helper: one operator flipped at a time in
+  `src/*.cpp` except main.cpp, the unit tests rebuilt and run; report in
+  `build/mutation/`). Weekly in CI (`.github/workflows/mutation.yml`, the
+  survivors in the run summary). Score 2026-11-25: 84.2% -> 85.2% (209
+  mutants). Most survivors need a live TLS server (wolfSSL error paths) or
+  are equivalent; write a test for a real gap, don't chase 100%.
 - Fuzzing: `fuzz/run.sh [SECONDS] [TARGET...]` (CI: 60 s per target, the
   `fuzz` job). It is a host build with clang 18 and Ubuntu's wolfSSL and
   nlohmann-json, not the SDK (it has no clang/libFuzzer). Targets cover
