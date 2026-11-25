@@ -2,18 +2,16 @@
 #include <cctype>
 #include <charconv>
 #include <format>
-#include <memory>
-#include <mutex>
 #include <optional>
 
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <wolfssl/options.h>
-#include <wolfssl/ssl.h>
 
 #include <aember-auth/http.h>
+
+#include "tls.h"
 
 namespace aember::auth {
 
@@ -231,18 +229,6 @@ int Connect(const std::string& host, int port) {
   return fd;
 }
 
-void InitWolfSsl() {
-  static std::once_flag once;
-  std::call_once(once, [] { wolfSSL_Init(); });
-}
-
-struct CtxDeleter {
-  void operator()(WOLFSSL_CTX* c) const { wolfSSL_CTX_free(c); }
-};
-struct SslDeleter {
-  void operator()(WOLFSSL* s) const { wolfSSL_free(s); }
-};
-
 }  // namespace
 
 HttpClient::HttpClient(Url url, std::string ca_file, std::string connect_host)
@@ -291,45 +277,12 @@ std::expected<HttpResponse, std::string> HttpClient::Request(
         on_head);
   }
 
-  InitWolfSsl();
-  std::unique_ptr<WOLFSSL_CTX, CtxDeleter> ctx{
-      wolfSSL_CTX_new(wolfTLS_client_method())};
-  if (!ctx) return std::unexpected("TLS setup failed");
-  if (wolfSSL_CTX_load_verify_locations(ctx.get(), ca_file_.c_str(), nullptr) !=
-      WOLFSSL_SUCCESS) {
-    return std::unexpected(std::format("cannot load CA {}", ca_file_));
-  }
-  wolfSSL_CTX_set_verify(ctx.get(), WOLFSSL_VERIFY_PEER, nullptr);
-  std::unique_ptr<WOLFSSL, SslDeleter> ssl{wolfSSL_new(ctx.get())};
-  if (!ssl) return std::unexpected("TLS setup failed");
-  wolfSSL_UseSNI(ssl.get(),
-                 WOLFSSL_SNI_HOST_NAME,
-                 url_.host.data(),
-                 static_cast<unsigned short>(url_.host.size()));
-  wolfSSL_check_domain_name(ssl.get(), url_.host.c_str());
-  wolfSSL_set_fd(ssl.get(), fd);
-  if (wolfSSL_connect(ssl.get()) != WOLFSSL_SUCCESS) {
-    char err[80] = {};
-    wolfSSL_ERR_error_string_n(
-        wolfSSL_get_error(ssl.get(), 0), err, sizeof(err));
-    return std::unexpected(
-        std::format("TLS handshake with {}: {}", url_.host, err));
-  }
-  if (wolfSSL_write(
-          ssl.get(), request.data(), static_cast<int>(request.size())) !=
-      static_cast<int>(request.size())) {
-    return std::unexpected("TLS write failed");
-  }
-  WOLFSSL* raw = ssl.get();
+  auto tls = TlsConnect(fd, url_.host, ca_file_);
+  if (!tls) return std::unexpected(tls.error());
+  if (!(*tls)->WriteAll(request)) return std::unexpected("TLS write failed");
+  TlsStream* stream = tls->get();
   return ReadHttpResponse(
-      [raw](char* buf, std::size_t n) -> ssize_t {
-        const int r = wolfSSL_read(raw, buf, static_cast<int>(n));
-        if (r > 0) return r;
-        const int err = wolfSSL_get_error(raw, r);
-        return err == WOLFSSL_ERROR_ZERO_RETURN || err == SOCKET_PEER_CLOSED_E
-                   ? 0
-                   : -1;
-      },
+      [stream](char* buf, std::size_t n) { return stream->Read(buf, n); },
       sink,
       on_head);
 }
