@@ -53,4 +53,11 @@ tools/aember-build-helper  submodule: packs the container
   `get<T>()` throw on another type, and `dump()` throws on invalid UTF-8;
   check types (`is_string()` ...) and dump text from outside with
   `error_handler_t::replace`.
+- Property-based tests: `tests/property.h` (`ForAll(name, runs, [](Gen&
+  g) {...})`, seeded cases, no framework; a failing case prints the seed,
+  `AEMBER_PROPERTY_SEED=<seed> AEMBER_PROPERTY_RUNS=1` reruns it, a big
+  `AEMBER_PROPERTY_RUNS` runs more) in `tests/test_properties.cpp`: base64,
+  HTTP responses in every framing read from pieces of random sizes, URLs,
+  signatures, the challenge message. A new parser or format gets a
+  round-trip property next to its fuzz target.
 - Commit as Arian Ajdari; branches + PRs; merge when tests pass.
