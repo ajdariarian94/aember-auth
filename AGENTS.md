@@ -12,10 +12,13 @@ aember-monitor: `aember-cli/run.py` runs aember-build-helper's shared
 SDKs have wolfSSL and nlohmann/json).
 
 ```
-include/aember-auth/   base64.h, device-key.h (Ed25519, wolfCrypt), http.h
+include/aember-auth/   base64.h, device-key.h (Ed25519, Monocypher), http.h
                        (HTTP/1.1 over TCP/TLS), fleet-client.h (enroll,
                        login, requests), server.h (the Unix socket)
-src/                   the same + main.cpp
+src/                   the same + main.cpp; tls.h with one backend per
+                       build: tls-mbedtls.cpp or tls-wolfssl.cpp
+third_party/monocypher Ed25519 (vendored 4.0.2, BSD-2-Clause; README)
+cmake/backends.cmake   monocypher + the TLS library (SDK and fuzz builds)
 tests/                 *-unittest via CTest; check.h (the SDK has no test
                        framework); test_fleet.cpp runs a fake fleet server
 fuzz/                  libFuzzer targets (host clang build, ASan + UBSan),
@@ -33,9 +36,18 @@ tools/aember-build-helper  submodule: packs the container
 - The challenge message `aember-auth-v1\n<device_id>\n<nonce>` and the API
   paths are an interface with aember-fleet's server
   (`server/aember_fleet/security.py`, `app.py`): change both together.
-- wolfSSL: include `<wolfssl/options.h>` first. Its compatibility macros
-  rename common words (`Sha256` is `wc_Sha256`); don't name classes like
-  them. `wc_ed25519_make_public` derives from an imported private key.
+- Licensing: aember-auth ships under the Aember License, so it must not
+  link GPL code. wolfSSL is GPL-2.0-only: it stays only as the SDK build's
+  TLS backend until the aember-resources SDK carries mbedTLS, then
+  `AEMBER_AUTH_TLS` defaults to `mbedtls` and the wolfSSL backend goes
+  (aember's `doc/licensing/`). Ed25519 is Monocypher's, never the TLS
+  library's. A new dependency needs its licence checked first.
+- TLS: `src/tls.h` is the only TLS interface; a backend checks the
+  certificate against the pinned CA and the name (SNI too).
+  `tests/test_tls.cpp` runs both against `openssl s_server` (good
+  certificate, wrong name, wrong CA, missing CA file). mbedTLS: the code
+  builds against 2.28 (Ubuntu 24.04, CI's host job) and 3.6 (Yocto), keep
+  it so. wolfSSL: include `<wolfssl/options.h>` first.
 - Tests build with the x64 SDK and run through its loader
   (`aember-cli/run.py test`). Locally, against an unreleased SDK:
   `AEMBER_RESOURCES_DIR=/aember_ws/aember-resources/yocto/build`.
@@ -50,7 +62,7 @@ tools/aember-build-helper  submodule: packs the container
   mutants). Most survivors need a live TLS server (wolfSSL error paths) or
   are equivalent; write a test for a real gap, don't chase 100%.
 - Fuzzing: `fuzz/run.sh [SECONDS] [TARGET...]` (CI: 60 s per target, the
-  `fuzz` job). It is a host build with clang 18 and Ubuntu's wolfSSL and
+  `fuzz` job). It is a host build with clang 18 and Ubuntu's mbedTLS and
   nlohmann-json, not the SDK (it has no clang/libFuzzer). Targets cover
   every input from outside the process: the socket (`fuzz_socket`), the
   fleet server's answers through a fake server (`fuzz_fleet_responses`),

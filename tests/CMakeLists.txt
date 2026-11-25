@@ -1,4 +1,4 @@
-foreach(name base64 device_key http fleet properties)
+foreach(name base64 device_key http fleet properties tls)
   string(REPLACE "_" "-" exe "${name}")
   add_executable(${exe}-unittest test_${name}.cpp)
   target_link_libraries(${exe}-unittest PRIVATE aember-auth-lib)

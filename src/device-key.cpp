@@ -1,42 +1,55 @@
 #include <aember-auth/base64.h>
 #include <aember-auth/device-key.h>
 
-// wolfSSL's options.h first: it carries the build's feature macros.
+#include <cerrno>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <sstream>
 
 #include <fcntl.h>
+#include <sys/random.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <wolfssl/options.h>
-#include <wolfssl/wolfcrypt/random.h>
 
-#include <wolfssl/wolfcrypt/ed25519.h>
+extern "C" {
+#include <monocypher-ed25519.h>
+#include <monocypher.h>
+}
+
+// Ed25519 (RFC 8032) is Monocypher's (third_party/monocypher, BSD-2-Clause):
+// small, no TLS library needed for it.
 
 namespace aember::auth {
 
 namespace {
 
-/// Public key and signature from a 32-byte seed through wolfCrypt.
+/// The 64-byte secret key (seed + public half) and the public key from the
+/// 32-byte seed. Wipes its copies when it goes away.
 struct Ed25519 {
-  ed25519_key key{};
-  bool ok = false;
+  std::array<std::uint8_t, 64> secret{};
+  std::array<std::uint8_t, 32> pub{};
   explicit Ed25519(const std::array<std::uint8_t, 32>& seed) {
-    if (wc_ed25519_init(&key) != 0) return;
-    std::array<std::uint8_t, 32> pub{};
-    // The public key is derived from the private part: import the seed
-    // alone, derive, then import both.
-    ok = wc_ed25519_import_private_only(seed.data(), seed.size(), &key) == 0 &&
-         wc_ed25519_make_public(&key, pub.data(), pub.size()) == 0 &&
-         wc_ed25519_import_private_key(
-             seed.data(), seed.size(), pub.data(), pub.size(), &key) == 0;
+    std::array<std::uint8_t, 32> copy = seed;  // key_pair wipes the seed
+    crypto_ed25519_key_pair(secret.data(), pub.data(), copy.data());
   }
-  ~Ed25519() { wc_ed25519_free(&key); }
+  ~Ed25519() { crypto_wipe(secret.data(), secret.size()); }
   Ed25519(const Ed25519&) = delete;
   Ed25519& operator=(const Ed25519&) = delete;
 };
+
+/// @p out filled from the kernel's random pool (blocks until it is seeded).
+bool RandomBytes(std::span<std::uint8_t> out) {
+  while (!out.empty()) {
+    const ssize_t n = ::getrandom(out.data(), out.size(), 0);
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      return false;
+    }
+    out = out.subspan(static_cast<std::size_t>(n));
+  }
+  return true;
+}
 
 }  // namespace
 
@@ -56,11 +69,7 @@ std::expected<DeviceKey, std::string> DeviceKey::LoadOrCreate(
     }
     std::copy(seed->begin(), seed->end(), k.seed_.begin());
   } else {
-    WC_RNG rng{};
-    if (wc_InitRng(&rng) != 0) return std::unexpected("no random generator");
-    const int rc = wc_RNG_GenerateBlock(&rng, k.seed_.data(), k.seed_.size());
-    wc_FreeRng(&rng);
-    if (rc != 0) return std::unexpected("random generator failed");
+    if (!RandomBytes(k.seed_)) return std::unexpected("random generator failed");
 
     std::error_code ec;
     const auto dir = std::filesystem::path{path}.parent_path();
@@ -79,43 +88,25 @@ std::expected<DeviceKey, std::string> DeviceKey::LoadOrCreate(
       return std::unexpected(std::format("cannot write {}", path));
     }
   }
-  Ed25519 key{k.seed_};
-  if (!key.ok) return std::unexpected("Ed25519 key setup failed");
-  word32 len = k.public_.size();
-  if (wc_ed25519_export_public(&key.key, k.public_.data(), &len) != 0) {
-    return std::unexpected("cannot export the public key");
-  }
+  const Ed25519 key{k.seed_};
+  k.public_ = key.pub;
   return k;
 }
 
 DeviceKey::Signature DeviceKey::Sign(
     std::span<const std::uint8_t> message) const {
   Signature sig{};
-  Ed25519 key{seed_};
-  word32 len = sig.size();
-  if (key.ok) {
-    wc_ed25519_sign_msg(
-        message.data(), message.size(), sig.data(), &len, &key.key);
-  }
+  const Ed25519 key{seed_};
+  crypto_ed25519_sign(sig.data(), key.secret.data(), message.data(),
+                      message.size());
   return sig;
 }
 
 bool DeviceKey::Verify(const PublicKey& key,
                        std::span<const std::uint8_t> message,
                        const Signature& signature) {
-  ed25519_key k{};
-  if (wc_ed25519_init(&k) != 0) return false;
-  int verified = 0;
-  const bool ok = wc_ed25519_import_public(key.data(), key.size(), &k) == 0 &&
-                  wc_ed25519_verify_msg(signature.data(),
-                                        signature.size(),
-                                        message.data(),
-                                        message.size(),
-                                        &verified,
-                                        &k) == 0 &&
-                  verified == 1;
-  wc_ed25519_free(&k);
-  return ok;
+  return crypto_ed25519_check(signature.data(), key.data(), message.data(),
+                              message.size()) == 0;
 }
 
 }  // namespace aember::auth
