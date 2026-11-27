@@ -8,15 +8,15 @@ A C++23 service in an aember LXC container: the device's identity towards
 aember-fleet (see README.md). Same layout and CLI as aember-stats and
 aember-monitor: `aember-cli/run.py` runs aember-build-helper's shared
 `project-cli/` and only sets what differs (
-`TESTS = "sdk"`, `RESOURCES_VERSION = "0.1.15"`, the first release whose
-SDKs have wolfSSL and nlohmann/json).
+`TESTS = "sdk"`, `RESOURCES_VERSION = "0.1.16"`, the first release whose
+SDKs have mbedTLS instead of wolfSSL; nlohmann/json since 0.1.15).
 
 ```
 include/aember-auth/   base64.h, device-key.h (Ed25519, Monocypher), http.h
                        (HTTP/1.1 over TCP/TLS), fleet-client.h (enroll,
                        login, requests), server.h (the Unix socket)
-src/                   the same + main.cpp; tls.h with one backend per
-                       build: tls-mbedtls.cpp or tls-wolfssl.cpp
+src/                   the same + main.cpp; tls.h, implemented on mbedTLS
+                       in tls-mbedtls.cpp
 third_party/monocypher Ed25519 (vendored 4.0.2, BSD-2-Clause; README)
 cmake/backends.cmake   monocypher + the TLS library (SDK and fuzz builds)
 tests/                 *-unittest via CTest; check.h (the SDK has no test
@@ -37,17 +37,16 @@ tools/aember-build-helper  submodule: packs the container
   paths are an interface with aember-fleet's server
   (`server/aember_fleet/security.py`, `app.py`): change both together.
 - Licensing: aember-auth ships under the Aember License, so it must not
-  link GPL code. wolfSSL is GPL-2.0-only: it stays only as the SDK build's
-  TLS backend until the aember-resources SDK carries mbedTLS, then
-  `AEMBER_AUTH_TLS` defaults to `mbedtls` and the wolfSSL backend goes
-  (aember's `doc/licensing/`). Ed25519 is Monocypher's, never the TLS
-  library's. A new dependency needs its licence checked first.
+  link GPL code: TLS is mbedTLS (Apache-2.0). The wolfSSL backend
+  (GPL-2.0-only) was removed with aember-resources v0.1.16, whose SDK has
+  mbedTLS instead (aember's `doc/licensing/`). Ed25519 is Monocypher's,
+  never the TLS library's. A new dependency needs its licence checked first.
 - TLS: `src/tls.h` is the only TLS interface; a backend checks the
   certificate against the pinned CA and the name (SNI too).
-  `tests/test_tls.cpp` runs both against `openssl s_server` (good
+  `tests/test_tls.cpp` runs it against `openssl s_server` (good
   certificate, wrong name, wrong CA, missing CA file). mbedTLS: the code
   builds against 2.28 (Ubuntu 24.04, CI's host job) and 3.6 (Yocto), keep
-  it so. wolfSSL: include `<wolfssl/options.h>` first.
+  it so.
 - Tests build with the x64 SDK and run through its loader
   (`aember-cli/run.py test`). Locally, against an unreleased SDK:
   `AEMBER_RESOURCES_DIR=/aember_ws/aember-resources/yocto/build`.
@@ -59,7 +58,7 @@ tools/aember-build-helper  submodule: packs the container
   `src/*.cpp` except main.cpp, the unit tests rebuilt and run; report in
   `build/mutation/`). Weekly in CI (`.github/workflows/mutation.yml`, the
   survivors in the run summary). Score 2026-11-25: 84.2% -> 85.2% (209
-  mutants). Most survivors need a live TLS server (wolfSSL error paths) or
+  mutants). Most survivors need a live TLS server (TLS error paths) or
   are equivalent; write a test for a real gap, don't chase 100%.
 - Fuzzing: `fuzz/run.sh [SECONDS] [TARGET...]` (CI: 60 s per target, the
   `fuzz` job). It is a host build with clang 18 and Ubuntu's mbedTLS and

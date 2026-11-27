@@ -17,8 +17,7 @@ server, in a small LXC container (~2.7 MB: one binary and its TLS library).
   **`/run/aember-auth/auth.sock`** and never hold the key, a token or a TLS
   stack. Only `/api/v1/device/...` requests are forwarded.
 
-TLS is mbedTLS (Apache-2.0) or, until the SDK carries mbedTLS, wolfSSL
-(GPL-2.0-only; `-DAEMBER_AUTH_TLS=mbedtls|wolfssl`), the server's certificate
+TLS is mbedTLS (Apache-2.0), the server's certificate
 checked against the fleet's CA
 (pinned, from the board's overlay) and its name.
 

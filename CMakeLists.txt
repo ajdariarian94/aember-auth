@@ -13,12 +13,9 @@ option(BUILD_TESTS "Build the unit tests" OFF)
 # Our C++ only: third_party/ (C) keeps its own warnings.
 add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic;-Werror>")
 
-# TLS backend: mbedTLS (Apache-2.0) or wolfSSL (GPL-2.0-only). wolfSSL stays
-# the default only until the aember-resources SDK carries mbedTLS
-# (aember's doc/licensing/: a GPL library can't be linked into a binary
-# sold under the Aember License).
-set(AEMBER_AUTH_TLS "wolfssl" CACHE STRING "TLS backend: mbedtls or wolfssl")
-set_property(CACHE AEMBER_AUTH_TLS PROPERTY STRINGS mbedtls wolfssl)
+# TLS: mbedTLS (Apache-2.0) from the aember-resources SDK (v0.1.16+). The
+# wolfSSL backend (GPL-2.0-only) is gone: a GPL library can't be linked into
+# a binary sold under the Aember License (aember's doc/licensing/).
 
 include(cmake/backends.cmake)
 find_package(nlohmann_json 3 REQUIRED)

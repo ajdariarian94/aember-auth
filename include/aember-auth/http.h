@@ -1,7 +1,7 @@
 /**
  * @file http.h
  * @brief A small HTTP/1.1 client (one request per connection) over TCP or
- *        TLS (wolfSSL, the server checked against a pinned CA certificate).
+ *        TLS (mbedTLS, the server checked against a pinned CA certificate).
  *        Enough for aember-auth's JSON calls and for streaming downloads
  *        through to local clients.
  */

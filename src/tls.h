@@ -1,9 +1,8 @@
 /**
  * @file tls.h
- * @brief The TLS client under HttpClient, with one backend chosen at build
- *        time (CMake AEMBER_AUTH_TLS): mbedTLS (Apache-2.0) or wolfSSL
- *        (GPL-2.0-only, kept until the SDK carries mbedTLS). Both check the
- *        server's certificate against a pinned CA file and its name.
+ * @brief The TLS client under HttpClient, on mbedTLS (Apache-2.0;
+ *        tls-mbedtls.cpp). It checks the server's certificate against a
+ *        pinned CA file and its name.
  */
 #pragma once
 
