@@ -11,6 +11,6 @@ Ed25519 (RFC 8032) for the device key: `monocypher.c/.h` and the optional
   under BSD-2-Clause, so the notice goes into the image's third-party
   notices.
 
-It replaces wolfCrypt's Ed25519 (wolfSSL is GPL-2.0-only; see aember's
+It replaced wolfCrypt's Ed25519 (wolfSSL is GPL-2.0-only; see aember's
 `doc/licensing/`). To update: replace the four files and this README's
 version and hash together.

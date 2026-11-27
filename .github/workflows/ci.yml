@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Unit tests (x64 SDK, wolfSSL backend, CLI)
+    name: Unit tests (x64 SDK, CLI)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -30,24 +30,20 @@ jobs:
         run: python3 aember-cli/run.py test
 
   host:
-    # The mbedTLS backend (what the SDK switches to; see
-    # aember's doc/licensing/) and the wolfSSL one, on the host with
-    # Ubuntu's libraries: unit tests incl. TLS against openssl s_server.
-    name: Unit tests (host, ${{ matrix.tls }})
+    # The same code with Ubuntu's mbedTLS 2.28 (the SDK has 3.6): unit
+    # tests incl. TLS against openssl s_server.
+    name: Unit tests (host, mbedTLS)
     runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        tls: [mbedtls, wolfssl]
     steps:
       - uses: actions/checkout@v4
       - name: Tools
         run: >-
           sudo apt-get update && sudo apt-get install -y g++-14 ninja-build
-          pkg-config libmbedtls-dev libwolfssl-dev nlohmann-json3-dev openssl
+          pkg-config libmbedtls-dev nlohmann-json3-dev openssl
       - name: Build
         run: >-
           CC=gcc-14 CXX=g++-14 cmake -S . -B build/host -G Ninja
-          -DBUILD_TESTS=ON -DAEMBER_AUTH_TLS=${{ matrix.tls }}
+          -DBUILD_TESTS=ON
           && cmake --build build/host
       - name: Tests
         run: ctest --test-dir build/host --output-on-failure
